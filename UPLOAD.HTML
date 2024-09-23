@@ -1,0 +1,80 @@
+<?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+session_start();
+include('dbconfig.php');
+
+require 'vendor/autoload.php';
+
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+
+if (isset($_POST['save_excel_data'])) {
+    $fileName = $_FILES['import_file']['name'];
+    $file_ext = pathinfo($fileName, PATHINFO_EXTENSION);
+
+    $allowed_ext = ['xls', 'csv', 'xlsx'];
+
+    if (in_array($file_ext, $allowed_ext)) {
+        $inputFileNamePath = $_FILES['import_file']['tmp_name'];
+
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($inputFileNamePath);
+            $data = $spreadsheet->getActiveSheet()->toArray();
+            $count = 0;
+
+            foreach ($data as $row) {
+                if ($count > 0) { // Skip the header row
+                    $student_name = mysqli_real_escape_string($con, $row[1]);
+                    $height_cm = mysqli_real_escape_string($con, $row[2]);
+                    $weight_kg = mysqli_real_escape_string($con, $row[3]);
+                    $grade = mysqli_real_escape_string($con, $row[4]);
+                    $section = mysqli_real_escape_string($con, $row[5]);
+                    $dob_bs = mysqli_real_escape_string($con, $row[6]);
+
+                    // Calculate Age
+                    $age = calculate_age_from_dob($dob_bs);
+
+                    // Calculate BMI
+                    $height_m = $height_cm / 100; // Convert cm to meters
+                    $bmi = $weight_kg / ($height_m * $height_m);
+
+                    // Sanitize age and bmi
+                    $age = mysqli_real_escape_string($con, $age);
+                    $bmi = mysqli_real_escape_string($con, $bmi);
+
+                    // Create the SQL query
+                    $studentQuery = "INSERT INTO students (student_name, height_cm, weight_kg, grade, section, dob_bs, age, bmi, remarks) 
+                                     VALUES ('$student_name', '$height_cm', '$weight_kg', '$grade', '$section', '$dob_bs', '$age', '$bmi', '')";
+
+                    if (!mysqli_query($con, $studentQuery)) {
+                        throw new Exception("Error inserting data: " . mysqli_error($con));
+                    }
+                } else {
+                    $count++;
+                }
+            }
+
+            $_SESSION['message'] = "Successfully Imported";
+        } catch (Exception $e) {
+            $_SESSION['message'] = "Error: " . $e->getMessage();
+        }
+    } else {
+        $_SESSION['message'] = "Invalid File";
+    }
+
+    header('Location: index.php');
+    exit(0);
+}
+
+// Function to calculate age from DOB (B.S)
+function calculate_age_from_dob($dob_bs) {
+    // This function needs to convert B.S. to A.D. or use a predefined library
+    // For simplicity, using a placeholder date
+    $dob_ad = "2000-01-01"; // Placeholder: You should convert this based on your requirements
+    $dob = new DateTime($dob_ad);
+    $now = new DateTime();
+    $interval = $now->diff($dob);
+    return $interval->y;
+}
+?>
